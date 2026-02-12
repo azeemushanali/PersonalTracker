@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ActionFlow Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .card-hover {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .task-item {
+            transition: all 0.15s ease;
+        }
+        .task-item:hover {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        .modal-enter {
+            animation: modalEnter 0.2s ease-out;
+        }
+        @keyframes modalEnter {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .checkbox-custom {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #d1d5db;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .checkbox-custom:checked {
+            background-color: #10b981;
+            border-color: #10b981;
+        }
+        .checkbox-custom:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 1px;
+            width: 6px;
+            height: 11px;
+            border: solid white;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+        .status-pending {
+            background-color: #fef3c7;
+            color: #d97706;
+        }
+        .status-completed {
+            background-color: #d1fae5;
+            color: #059669;
+        }
+        .status-overdue {
+            background-color: #fee2e2;
+            color: #dc2626;
+        }
+        .section-dap { border-left: 4px solid #3b82f6; }
+        .section-aiml { border-left: 4px solid #8b5cf6; }
+        .section-hiring { border-left: 4px solid #10b981; }
+        .section-gtm { border-left: 4px solid #ec4899; }
+        .section-delivery { border-left: 4px solid #06b6d4; }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, createContext, useContext, useMemo } = React;
+
+        // ==================== CONTEXT ====================
+        const AuthContext = createContext(null);
+        const DataContext = createContext(null);
+
+        // ==================== MOCK DATABASE ====================
+        // API Base URL - change for production
+        const API_BASE = window.location.origin;
+
+        // ==================== SERVICES ====================
+        const authService = {
+            login: async (email, password) => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    return await response.json();
+                } catch (error) {
+                    console.error('Login error:', error);
+                    return { success: false, error: 'Network error' };
+                }
+            },
+            register: async (email, password, name) => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/auth/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password, name })
+                    });
+                    return await response.json();
+                } catch (error) {
+                    console.error('Register error:', error);
+                    return { success: false, error: 'Network error' };
+                }
+            }
+        };
+
+        const dataService = {
+            getActions: async (userId) => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/resource-actions/${userId}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Get actions error:', error);
+                    return [];
+                }
+            },
+            addAction: async (action) => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/resource-actions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(action)
+                    });
+                    return await response.json();
+                } catch (error) {
+                    console.error('Add action error:', error);
+                    return null;
+                }
+            },
+            getActivityActions: async (userId) => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/activity-actions/${userId}`);
+                    return await response.json();
+                } catch (error) {
+                    console.error('Get activity actions error:', error);
+                    return [];
+                }
+            },
+            addActivityAction: async (action) => {
+                try {
+                    const response = await fetch(`${API_BASE}/api/activity-actions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(action)
+                    });
+                    return await response.json();
+                } catch (error) {
+                    console.error('Add activity action error:', error);
+                    return null;
+                }
+            },
+            updateAction: async (id, updates) => {
+                try {
+                    // Try resource actions first
+                    let response = await fetch(`${API_BASE}/api/resource-actions/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                    
+                    if (response.ok) {
+                        return await response.json();
+                    }
+                    
+                    // Try activity actions if not found in resource actions
+                    response = await fetch(`${API_BASE}/api/activity-actions/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updates)
+                    });
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('Update action error:', error);
+                    return null;
+                }
+            },
+            deleteAction: async (id) => {
+                try {
+                    // Try resource actions first
+                    let response = await fetch(`${API_BASE}/api/resource-actions/${id}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        return true;
+                    }
+                    
+                    // Try activity actions if not found in resource actions
+                    response = await fetch(`${API_BASE}/api/activity-actions/${id}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    return response.ok;
+                } catch (error) {
+                    console.error('Delete action error:', error);
+                    return false;
+                }
+            }
+        };
+
+        // ==================== UTILS ====================
+        const formatDate = (dateStr) => {
+            const date = new Date(dateStr);
+            const today = new Date();
+            const isToday = date.toDateString() === today.toDateString();
+            const isTomorrow = new Date(today.getTime() + 86400000).toDateString() === date.toDateString();
+            const isYesterday = new Date(today.getTime() - 86400000).toDateString() === date.toDateString();
+            
+            if (isToday) return 'Today';
+            if (isTomorrow) return 'Tomorrow';
+            if (isYesterday) return 'Yesterday';
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+
+        const isOverdue = (dueDate, status) => {
+            if (status === 'Completed') return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dueDate);
+            due.setHours(0, 0, 0, 0);
+            return due < today;
+        };
+
+        const isDueToday = (dueDate) => {
+            const today = new Date();
+            const due = new Date(dueDate);
+            return today.toDateString() === due.toDateString();
+        };
+
+        // ==================== COMPONENTS ====================
+
+        // ---- Login Component ----
+        const Login = ({ onLogin }) => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setIsLoading(true);
+                setError('');
+                
+                const result = await authService.login(email, password);
+                if (result.success) {
+                    onLogin(result.user);
+                } else {
+                    setError(result.error);
+                }
+                setIsLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4">
+                    <div className="w-full max-w-md">
+                        <div className="text-center mb-8">
+                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 mb-4 shadow-lg">
+                                <i data-lucide="check-circle-2" className="w-8 h-8 text-white"></i>
+                            </div>
+                            <h1 className="text-3xl font-bold text-gray-900 mb-2">ActionFlow</h1>
+                            <p className="text-gray-500">Your daily action tracker</p>
+                        </div>
+                        
+                        <div className="bg-white rounded-2xl shadow-xl p-8">
+                            <form onSubmit={handleSubmit} className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                        placeholder="demo@actionflow.com"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                    <input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                        placeholder="demo123"
+                                        required
+                                    />
+                                </div>
+                                {error && (
+                                    <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 p-3 rounded-lg">
+                                        <i data-lucide="alert-circle" className="w-4 h-4"></i>
+                                        {error}
+                                    </div>
+                                )}
+                                <button
+                                    type="submit"
+                                    disabled={isLoading}
+                                    className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-medium rounded-xl hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl"
+                                >
+                                    {isLoading ? 'Signing in...' : 'Sign In'}
+                                </button>
+                            </form>
+                            <div className="mt-6 text-center text-sm text-gray-500">
+                                <p>Demo: demo@actionflow.com / demo123</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ---- Modal Component ----
+        const Modal = ({ isOpen, onClose, title, children }) => {
+            useEffect(() => {
+                if (isOpen) {
+                    const timer = setTimeout(() => lucide.createIcons(), 0);
+                    return () => clearTimeout(timer);
+                }
+            }, [isOpen]);
+
+            if (!isOpen) return null;
+            
+            const handleBackdropClick = (e) => {
+                if (e.target === e.currentTarget) {
+                    onClose();
+                }
+            };
+            
+            return ReactDOM.createPortal(
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={handleBackdropClick}>
+                    <div className="modal-enter bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+                            <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                                <i data-lucide="x" className="w-5 h-5 text-gray-500"></i>
+                            </button>
+                        </div>
+                        <div className="p-6">
+                            {children}
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            );
+        };
+
+        // ---- Task Detail Modal (View/Edit) ----
+        const TaskDetailModal = ({ isOpen, onClose, action, onUpdate }) => {
+            const [title, setTitle] = useState('');
+            const [description, setDescription] = useState('');
+            const [dueDate, setDueDate] = useState('');
+            const [category, setCategory] = useState('');
+            const [assignee, setAssignee] = useState('');
+            const [isEditing, setIsEditing] = useState(false);
+
+            const categories = ['DAP', 'AI/ML', 'Hiring', 'GTM', 'Delivery'];
+            const people = ['Rohit Hota', 'Bittu', 'Aditya', 'Asif', 'Gokul'];
+            const isResourceAction = action && action.assignee !== undefined;
+
+            useEffect(() => {
+                if (isOpen && action) {
+                    setTitle(action.title || '');
+                    setDescription(action.description || '');
+                    setDueDate(action.dueDate || '');
+                    setCategory(action.section || '');
+                    setAssignee(action.assignee || '');
+                    setIsEditing(false);
+                }
+            }, [isOpen, action]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!category) {
+                    alert('Please select a category');
+                    return;
+                }
+                if (isResourceAction && !assignee) {
+                    alert('Please select an assignee');
+                    return;
+                }
+                
+                const updates = {
+                    title,
+                    description,
+                    dueDate,
+                    section: category,
+                    ...(isResourceAction && { assignee })
+                };
+                
+                await onUpdate(action.id, updates);
+                setIsEditing(false);
+                onClose();
+            };
+
+            if (!action) return null;
+
+            return (
+                <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? "Edit Task" : "Task Details"}>
+                    <form onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                            {isEditing ? (
+                                <input
+                                    type="text"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                    required
+                                    autoFocus
+                                />
+                            ) : (
+                                <p className="text-gray-900 font-medium">{title}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                            {isEditing ? (
+                                <textarea
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                    rows="3"
+                                />
+                            ) : (
+                                <p className="text-gray-700">{description || 'No description'}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+                            {isEditing ? (
+                                <input
+                                    type="date"
+                                    value={dueDate}
+                                    onChange={(e) => setDueDate(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                    required
+                                />
+                            ) : (
+                                <p className="text-gray-700">{formatDate(dueDate)}</p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                            {isEditing ? (
+                                <select
+                                    value={category}
+                                    onChange={(e) => setCategory(e.target.value)}
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none bg-white"
+                                    required
+                                >
+                                    {categories.map(cat => (
+                                        <option key={cat} value={cat}>{cat}</option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <p className="text-gray-700">{category}</p>
+                            )}
+                        </div>
+
+                        {isResourceAction && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Assignee</label>
+                                {isEditing ? (
+                                    <select
+                                        value={assignee}
+                                        onChange={(e) => setAssignee(e.target.value)}
+                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none bg-white"
+                                        required
+                                    >
+                                        {people.map(person => (
+                                            <option key={person} value={person}>{person}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <p className="text-gray-700">{assignee}</p>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="flex items-center gap-2 pt-2">
+                            <span className={`text-sm px-3 py-1 rounded-full font-medium ${
+                                action.status === 'Completed' 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                                {action.status}
+                            </span>
+                            {action.completedAt && (
+                                <span className="text-xs text-gray-500">
+                                    Completed: {new Date(action.completedAt).toLocaleDateString()}
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 pt-4">
+                            {isEditing ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditing(false)}
+                                        className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="flex-1 py-3 px-4 bg-blue-500 text-white font-medium rounded-xl hover:bg-blue-600 transition-colors"
+                                    >
+                                        Save Changes
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={onClose}
+                                        className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                                    >
+                                        Close
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { 
+                                            e.preventDefault(); 
+                                            e.stopPropagation(); 
+                                            setIsEditing(true); 
+                                        }}
+                                        className="flex-1 py-3 px-4 bg-blue-500 text-white font-medium rounded-xl hover:bg-blue-600 transition-colors"
+                                    >
+                                        Edit Task
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </form>
+                </Modal>
+            );
+        };
+
+        // ---- Add Resource Action Modal (with assignee) ----
+        const AddResourceActionModal = ({ isOpen, onClose, onAdd, initialSection = '' }) => {
+            const getTodayDate = () => {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            
+            const [title, setTitle] = useState('');
+            const [dueDate, setDueDate] = useState(getTodayDate());
+            const [category, setCategory] = useState(initialSection);
+            const [assignee, setAssignee] = useState('');
+
+            const categories = ['DAP', 'AI/ML', 'Hiring', 'GTM', 'Delivery'];
+            const people = ['Rohit Hota', 'Bittu', 'Aditya', 'Asif', 'Gokul'];
+
+            useEffect(() => {
+                if (isOpen) {
+                    setTitle('');
+                    setDueDate(getTodayDate());
+                    setCategory(initialSection || 'DAP');
+                    setAssignee('');
+                }
+            }, [isOpen, initialSection]);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!category) {
+                    alert('Please select a category');
+                    return;
+                }
+                if (!assignee) {
+                    alert('Please select an assignee');
+                    return;
+                }
+                onAdd({ title, dueDate, section: category, assignee });
+                setTitle('');
+                setCategory('');
+                setAssignee('');
+                onClose();
+            };
+
+            return (
+                <Modal isOpen={isOpen} onClose={onClose} title="Add Resource Action">
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Action Title</label>
+                            <input
+                                type="text"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                placeholder="What needs to be done?"
+                                required
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+                            <input
+                                type="date"
+                                value={dueDate}
+                                onChange={(e) => setDueDate(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                            <select
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none bg-white"
+                                required
+                            >
+                                <option value="">Select a category</option>
+                                {categories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Assignee</label>
+                            <select
+                                value={assignee}
+                                onChange={(e) => setAssignee(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none bg-white"
+                                required
+                            >
+                                <option value="">Select an assignee</option>
+                                {people.map(person => (
+                                    <option key={person} value={person}>{person}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex gap-3 pt-4">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="flex-1 py-3 px-4 bg-blue-500 text-white font-medium rounded-xl hover:bg-blue-600 transition-colors"
+                            >
+                                Add Action
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            );
+        };
+
+        // ---- Add Activity Action Modal (without assignee) ----
+        const AddActivityActionModal = ({ isOpen, onClose, onAdd, initialSection = '' }) => {
+            const getTodayDate = () => {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const day = String(today.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            
+            const [title, setTitle] = useState('');
+            const [description, setDescription] = useState('');
+            const [dueDate, setDueDate] = useState(getTodayDate());
+            const [category, setCategory] = useState(initialSection);
+
+            const categories = ['DAP', 'AI/ML', 'Hiring', 'GTM', 'Delivery'];
+
+            useEffect(() => {
+                if (isOpen) {
+                    setTitle('');
+                    setDescription('');
+                    setDueDate(getTodayDate());
+                    setCategory(initialSection || 'DAP');
+                }
+            }, [isOpen, initialSection]);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!category) {
+                    alert('Please select a category');
+                    return;
+                }
+                onAdd({ title, description, dueDate, section: category });
+                setTitle('');
+                setDescription('');
+                setCategory('');
+                onClose();
+            };
+
+            return (
+                <Modal isOpen={isOpen} onClose={onClose} title="Add New Activity">
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                            <input
+                                type="text"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                placeholder="What needs to be done?"
+                                required
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                            <textarea
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                placeholder="Describe the activity..."
+                                rows="3"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Due Date</label>
+                            <input
+                                type="date"
+                                value={dueDate}
+                                onChange={(e) => setDueDate(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                            <select
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none bg-white"
+                                required
+                            >
+                                <option value="">Select a category</option>
+                                {categories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex gap-3 pt-4">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="flex-1 py-3 px-4 border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="flex-1 py-3 px-4 bg-blue-500 text-white font-medium rounded-xl hover:bg-blue-600 transition-colors"
+                            >
+                                Add Activity
+                            </button>
+                        </div>
+                    </form>
+                </Modal>
+            );
+        };
+
+        // ---- Task Item Component ----
+        const TaskItem = ({ action, onToggle, onDelete, onView }) => {
+            const overdue = isOverdue(action.dueDate, action.status);
+            const dueToday = isDueToday(action.dueDate);
+            
+            const getStatusClass = () => {
+                if (action.status === 'Completed') return 'status-completed';
+                if (overdue) return 'status-overdue';
+                return 'status-pending';
+            };
+
+            const getStatusText = () => {
+                if (action.status === 'Completed') return 'Completed';
+                if (overdue) return 'Overdue';
+                return 'Pending';
+            };
+
+            return (
+                <div className="task-item flex items-start gap-3 p-3 rounded-xl group">
+                    <input
+                        type="checkbox"
+                        checked={action.status === 'Completed'}
+                        onChange={() => onToggle(action.id)}
+                        className="checkbox-custom mt-0.5 flex-shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    <div 
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => onView(action)}
+                    >
+                        <p className={`text-sm font-medium ${action.status === 'Completed' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                            {action.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-500">
+                                Due: {formatDate(action.dueDate)}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusClass()}`}>
+                                {getStatusText()}
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(action.id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-all"
+                    >
+                        <i data-lucide="trash-2" className="w-4 h-4"></i>
+                    </button>
+                </div>
+            );
+        };
+
+        // ---- Card Component ----
+        const Card = ({ section, actions, icon, color, onToggle, onDelete }) => {
+            const colorClasses = {
+                blue: { bg: 'bg-blue-100', text: 'text-blue-600', border: 'section-dap' },
+                purple: { bg: 'bg-purple-100', text: 'text-purple-600', border: 'section-aiml' },
+                green: { bg: 'bg-green-100', text: 'text-green-600', border: 'section-hiring' },
+                pink: { bg: 'bg-pink-100', text: 'text-pink-600', border: 'section-gtm' },
+                cyan: { bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'section-delivery' },
+                gray: { bg: 'bg-gray-100', text: 'text-gray-600', border: '' }
+            };
+
+            const classes = colorClasses[color] || colorClasses.gray;
+
+            return (
+                <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 card-hover overflow-hidden ${classes.border}`}>
+                    <div className="p-5">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl ${classes.bg} flex items-center justify-center`}>
+                                    <i data-lucide={icon} className={`w-5 h-5 ${classes.text}`}></i>
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-gray-900">{section}</h3>
+                                    <p className="text-xs text-gray-500">{actions.length} {actions.length === 1 ? 'task' : 'tasks'}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                            {actions.length === 0 ? (
+                                <p className="text-sm text-gray-400 text-center py-4">No tasks</p>
+                            ) : (
+                                actions.map(action => (
+                                    <TaskItem
+                                        key={action.id}
+                                        action={action}
+                                        onToggle={onToggle}
+                                        onDelete={onDelete}
+                                    />
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ---- Section Header ----
+        const SectionHeader = ({ title, count, icon, color = 'blue' }) => {
+            const colorClasses = {
+                blue: { bg: 'bg-blue-100', text: 'text-blue-600' },
+                green: { bg: 'bg-green-100', text: 'text-green-600' },
+                yellow: { bg: 'bg-yellow-100', text: 'text-yellow-600' },
+                purple: { bg: 'bg-purple-100', text: 'text-purple-600' },
+                pink: { bg: 'bg-pink-100', text: 'text-pink-600' },
+                cyan: { bg: 'bg-cyan-100', text: 'text-cyan-600' },
+                red: { bg: 'bg-red-100', text: 'text-red-600' },
+                gray: { bg: 'bg-gray-100', text: 'text-gray-600' }
+            };
+
+            const classes = colorClasses[color] || colorClasses.blue;
+
+            return (
+                <div className="flex items-center gap-3 mb-6">
+                    <div className={`w-10 h-10 rounded-xl ${classes.bg} flex items-center justify-center`}>
+                        <i data-lucide={icon} className={`w-5 h-5 ${classes.text}`}></i>
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+                        <p className="text-sm text-gray-500">{count} {count === 1 ? 'card' : 'cards'}</p>
+                    </div>
+                </div>
+            );
+        };
+
+        // ---- Empty State ----
+        const EmptyState = ({ message, icon = "inbox" }) => (
+            <div className="text-center py-12">
+                <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide={icon} className="w-8 h-8 text-gray-400"></i>
+                </div>
+                <p className="text-gray-500">{message}</p>
+            </div>
+        );
+
+        // ---- Resource Tracker Component ----
+        const ResourceTracker = ({ actions, addAction, toggleAction, deleteAction, viewAction, getSectionIcon, getSectionColor, isAddModalOpen, setIsAddModalOpen }) => {
+            const resourceCards = useMemo(() => {
+                const people = [...new Set(actions.map(a => a.assignee))];
+                return people.map(person => {
+                    const personActions = actions.filter(a => a.assignee === person);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    const future = personActions.filter(a => {
+                        const dueDate = new Date(a.dueDate);
+                        dueDate.setHours(0, 0, 0, 0);
+                        return dueDate > today && a.status === 'Pending';
+                    });
+                    const ongoing = personActions.filter(a => {
+                        const dueDate = new Date(a.dueDate);
+                        dueDate.setHours(0, 0, 0, 0);
+                        return dueDate <= today && a.status === 'Pending';
+                    });
+                    const done = personActions.filter(a => a.status === 'Completed');
+                    
+                    return { person, ongoing, done, future };
+                });
+            }, [actions]);
+
+            return (
+                <>
+                    {/* Add Resource Button */}
+                    <div className="mb-6 flex justify-end">
+                        <button
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center gap-2"
+                        >
+                            <i data-lucide="plus" className="w-5 h-5"></i>
+                            Add Resource Action
+                        </button>
+                    </div>
+
+                    <div className="space-y-8">
+                        {resourceCards.map(({ person, ongoing, done, future }) => (
+                        <div key={person} className="slide-in">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                                    {person.split(' ').map(n => n[0]).join('')}
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900">{person}</h2>
+                                    <p className="text-sm text-gray-500">{ongoing.length + done.length + future.length} total tasks</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                        <i data-lucide="clock" className="w-5 h-5 text-yellow-600"></i>
+                                        Ongoing ({ongoing.length})
+                                    </h3>
+                                    <div className="space-y-1">
+                                        {ongoing.length === 0 ? (
+                                            <p className="text-sm text-gray-400 text-center py-4">No ongoing tasks</p>
+                                        ) : (
+                                            ongoing.map(action => (
+                                                <TaskItem key={action.id} action={action} onToggle={toggleAction} onDelete={deleteAction} onView={viewAction} />
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                        <i data-lucide="check-circle" className="w-5 h-5 text-green-600"></i>
+                                        Done ({done.length})
+                                    </h3>
+                                    <div className="space-y-1">
+                                        {done.length === 0 ? (
+                                            <p className="text-sm text-gray-400 text-center py-4">No completed tasks</p>
+                                        ) : (
+                                            done.map(action => (
+                                                <TaskItem key={action.id} action={action} onToggle={toggleAction} onDelete={deleteAction} onView={viewAction} />
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                                    <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                        <i data-lucide="calendar" className="w-5 h-5 text-blue-600"></i>
+                                        Future ({future.length})
+                                    </h3>
+                                    <div className="space-y-1">
+                                        {future.length === 0 ? (
+                                            <p className="text-sm text-gray-400 text-center py-4">No future tasks</p>
+                                        ) : (
+                                            future.map(action => (
+                                                <TaskItem key={action.id} action={action} onToggle={toggleAction} onDelete={deleteAction} onView={viewAction} />
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                    </div>
+
+                    {/* Add Resource Action Modal */}
+                    <AddResourceActionModal
+                        isOpen={isAddModalOpen}
+                        onClose={() => setIsAddModalOpen(false)}
+                        onAdd={(actionData) => {
+                            addAction(actionData);
+                            setIsAddModalOpen(false);
+                        }}
+                    />
+                </>
+            );
+        };
+
+        // ---- Activity Tracker Component ----
+        const ActivityTracker = ({ actions, addActivityAction, toggleAction, deleteAction, viewAction, getSectionIcon, getSectionColor, isAddModalOpen, setIsAddModalOpen }) => {
+            const categoryCards = useMemo(() => {
+                // Always show all categories
+                const allCategories = ['DAP', 'AI/ML', 'Hiring', 'GTM', 'Delivery'];
+                return allCategories.map(category => {
+                    const categoryActions = actions.filter(a => a.section === category);
+                    const ongoing = categoryActions.filter(a => a.status === 'Pending' && isDueToday(a.dueDate));
+                    const future = categoryActions.filter(a => a.status === 'Pending' && !isDueToday(a.dueDate));
+                    const done = categoryActions.filter(a => a.status === 'Completed');
+                    return { category, ongoing, future, done };
+                });
+            }, [actions]);
+
+            const colorClasses = {
+                blue: { bg: 'bg-blue-100', text: 'text-blue-600', border: 'section-dap' },
+                purple: { bg: 'bg-purple-100', text: 'text-purple-600', border: 'section-aiml' },
+                green: { bg: 'bg-green-100', text: 'text-green-600', border: 'section-hiring' },
+                pink: { bg: 'bg-pink-100', text: 'text-pink-600', border: 'section-gtm' },
+                cyan: { bg: 'bg-cyan-100', text: 'text-cyan-600', border: 'section-delivery' },
+                gray: { bg: 'bg-gray-100', text: 'text-gray-600', border: '' }
+            };
+
+            return (
+                <>
+                    {/* Add Activity Button */}
+                    <div className="mb-6 flex justify-end">
+                        <button
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg transition-all flex items-center gap-2"
+                        >
+                            <i data-lucide="plus" className="w-5 h-5"></i>
+                            Add Activity
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {categoryCards.map(({ category, ongoing, future, done }) => {
+                        const color = getSectionColor(category);
+                        const icon = getSectionIcon(category);
+                        const classes = colorClasses[color] || colorClasses.gray;
+
+                        return (
+                            <div key={category} className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden ${classes.border}`}>
+                                {/* Category Header */}
+                                <div className="p-5 border-b border-gray-100">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-xl ${classes.bg} flex items-center justify-center`}>
+                                            <i data-lucide={icon} className={`w-5 h-5 ${classes.text}`}></i>
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-900">{category}</h3>
+                                            <p className="text-xs text-gray-500">{ongoing.length + future.length + done.length} tasks</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Ongoing Tasks - First */}
+                                <div className="p-5 border-b border-gray-100">
+                                    <h4 className="font-semibold text-sm text-gray-700 mb-3 flex items-center gap-2">
+                                        <i data-lucide="clock" className="w-4 h-4 text-yellow-600"></i>
+                                        Ongoing ({ongoing.length})
+                                    </h4>
+                                    <div className="space-y-1">
+                                        {ongoing.length === 0 ? (
+                                            <p className="text-xs text-gray-400 text-center py-2">No ongoing tasks</p>
+                                        ) : (
+                                            ongoing.map(action => (
+                                                <TaskItem key={action.id} action={action} onToggle={toggleAction} onDelete={deleteAction} onView={viewAction} />
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Future Tasks - Middle */}
+                                <div className="p-5 border-b border-gray-100 bg-gray-50">
+                                    <h4 className="font-semibold text-sm text-gray-700 mb-3 flex items-center gap-2">
+                                        <i data-lucide="calendar" className="w-4 h-4 text-blue-600"></i>
+                                        Future ({future.length})
+                                    </h4>
+                                    <div className="space-y-1">
+                                        {future.length === 0 ? (
+                                            <p className="text-xs text-gray-400 text-center py-2">No future tasks</p>
+                                        ) : (
+                                            future.map(action => (
+                                                <TaskItem key={action.id} action={action} onToggle={toggleAction} onDelete={deleteAction} onView={viewAction} />
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Done Tasks - Last */}
+                                <div className="p-5">
+                                    <h4 className="font-semibold text-sm text-gray-700 mb-3 flex items-center gap-2">
+                                        <i data-lucide="check-circle" className="w-4 h-4 text-green-600"></i>
+                                        Done ({done.length})
+                                    </h4>
+                                    <div className="space-y-1">
+                                        {done.length === 0 ? (
+                                            <p className="text-xs text-gray-400 text-center py-2">No completed tasks</p>
+                                        ) : (
+                                            done.map(action => (
+                                                <TaskItem key={action.id} action={action} onToggle={toggleAction} onDelete={deleteAction} onView={viewAction} />
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    </div>
+
+                    {/* Add Activity Modal */}
+                    <AddActivityActionModal
+                        isOpen={isAddModalOpen}
+                        onClose={() => setIsAddModalOpen(false)}
+                        onAdd={(actionData) => {
+                            addActivityAction(actionData);
+                            setIsAddModalOpen(false);
+                        }}
+                    />
+                </>
+            );
+        };
+
+        // ---- Dashboard Component ----
+        const Dashboard = ({ user, onLogout }) => {
+            const [actions, setActions] = useState([]);
+            const [activityActions, setActivityActions] = useState([]);
+            const [currentView, setCurrentView] = useState('activity'); // 'activity' or 'resource'
+            const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+            const [isAddActivityModalOpen, setIsAddActivityModalOpen] = useState(false);
+            const [selectedAction, setSelectedAction] = useState(null);
+            const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+
+            useEffect(() => {
+                const loadData = async () => {
+                    const userActions = await dataService.getActions(user.id);
+                    setActions(userActions);
+                    const userActivityActions = await dataService.getActivityActions(user.id);
+                    setActivityActions(userActivityActions);
+                };
+                loadData();
+            }, [user.id]);
+
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    lucide.createIcons();
+                }, 0);
+                return () => clearTimeout(timer);
+            });
+
+            const addAction = useCallback(async ({ title, dueDate, section, assignee }) => {
+                const newAction = await dataService.addAction({
+                    title,
+                    section,
+                    dueDate,
+                    assignee,
+                    userId: user.id
+                });
+                if (newAction) {
+                    setActions(prev => [...prev, newAction]);
+                }
+            }, [user.id]);
+
+            const addActivityAction = useCallback(async ({ title, description, dueDate, section }) => {
+                const newAction = await dataService.addActivityAction({
+                    title,
+                    description,
+                    section,
+                    dueDate,
+                    userId: user.id
+                });
+                if (newAction) {
+                    setActivityActions(prev => [...prev, newAction]);
+                }
+            }, [user.id]);
+
+            const toggleAction = useCallback(async (id) => {
+                const action = actions.find(a => a.id === id) || activityActions.find(a => a.id === id);
+                const newStatus = action.status === 'Completed' ? 'Pending' : 'Completed';
+                const updates = {
+                    status: newStatus,
+                    completedAt: newStatus === 'Completed' ? new Date().toISOString() : null
+                };
+                await dataService.updateAction(id, updates);
+                setActions(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+                setActivityActions(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
+            }, [actions, activityActions]);
+
+            const deleteAction = useCallback(async (id) => {
+                if (confirm('Are you sure you want to delete this action?')) {
+                    const success = await dataService.deleteAction(id);
+                    if (success) {
+                        setActions(prev => prev.filter(a => a.id !== id));
+                        setActivityActions(prev => prev.filter(a => a.id !== id));
+                    }
+                }
+            }, []);
+
+            const viewAction = useCallback((action) => {
+                setSelectedAction(action);
+                setIsDetailModalOpen(true);
+            }, []);
+
+            const updateTaskDetails = useCallback(async (id, updates) => {
+                const response = await dataService.updateAction(id, updates);
+                if (response) {
+                    // Use the full response from server instead of just the updates object
+                    setActions(prev => prev.map(a => a.id === id ? response : a));
+                    setActivityActions(prev => prev.map(a => a.id === id ? response : a));
+                }
+            }, []);
+
+            // Group actions
+            const { todayCards, pendingCards, completedCards } = useMemo(() => {
+                const today = new Date().toISOString().split('T')[0];
+                
+                // Get unique sections
+                const sections = [...new Set(actions.map(a => a.section))];
+                
+                const todayCards = [];
+                const pendingCards = [];
+                const completedCards = [];
+                
+                sections.forEach(section => {
+                    const sectionActions = actions.filter(a => a.section === section);
+                    const todayTasks = sectionActions.filter(a => isDueToday(a.dueDate) && a.status !== 'Completed');
+                    const pendingTasks = sectionActions.filter(a => 
+                        (isOverdue(a.dueDate, a.status) || (!isDueToday(a.dueDate) && a.status !== 'Completed'))
+                    );
+                    const completedTasks = sectionActions.filter(a => a.status === 'Completed');
+                    
+                    if (todayTasks.length > 0) {
+                        todayCards.push({ section, actions: todayTasks });
+                    }
+                    if (pendingTasks.length > 0) {
+                        pendingCards.push({ section, actions: pendingTasks });
+                    }
+                    if (completedTasks.length > 0) {
+                        completedCards.push({ section, actions: completedTasks });
+                    }
+                });
+                
+                return { todayCards, pendingCards, completedCards };
+            }, [actions]);
+
+            const getSectionIcon = (section) => {
+                const icons = {
+                    'DAP': 'database',
+                    'AI/ML': 'brain',
+                    'Hiring': 'users',
+                    'GTM': 'rocket',
+                    'Delivery': 'truck'
+                };
+                return icons[section] || 'folder';
+            };
+
+            const getSectionColor = (section) => {
+                const colors = {
+                    'DAP': 'blue',
+                    'AI/ML': 'purple',
+                    'Hiring': 'green',
+                    'GTM': 'pink',
+                    'Delivery': 'cyan'
+                };  
+                return colors[section] || 'gray';
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <header className="sticky top-0 z-40 glass-effect border-b border-gray-200">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                            <div className="flex items-center justify-between h-16">
+                                <div className="flex items-center gap-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                            <i data-lucide="check-circle-2" className="w-5 h-5 text-white"></i>
+                                        </div>
+                                        <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                                            ActionFlow
+                                        </span>
+                                    </div>
+                                    <div className="hidden md:flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+                                        <button
+                                            onClick={() => setCurrentView('activity')}
+                                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                                                currentView === 'activity'
+                                                    ? 'bg-white text-blue-600 shadow-sm'
+                                                    : 'text-gray-600 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            Activity Tracker
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrentView('resource')}
+                                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                                                currentView === 'resource'
+                                                    ? 'bg-white text-blue-600 shadow-sm'
+                                                    : 'text-gray-600 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            Resource Tracker
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="hidden sm:flex items-center gap-2 text-sm text-gray-600">
+                                        <i data-lucide="user" className="w-4 h-4"></i>
+                                        {user.name}
+                                    </div>
+                                    <button
+                                        onClick={onLogout}
+                                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-600"
+                                    >
+                                        <i data-lucide="log-out" className="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                        {currentView === 'activity' ? (
+                            <ActivityTracker
+                                actions={activityActions}
+                                addActivityAction={addActivityAction}
+                                toggleAction={toggleAction}
+                                deleteAction={deleteAction}
+                                viewAction={viewAction}
+                                getSectionIcon={getSectionIcon}
+                                getSectionColor={getSectionColor}
+                                isAddModalOpen={isAddActivityModalOpen}
+                                setIsAddModalOpen={setIsAddActivityModalOpen}
+                            />
+                        ) : (
+                            <ResourceTracker
+                                actions={actions}
+                                addAction={addAction}
+                                toggleAction={toggleAction}
+                                deleteAction={deleteAction}
+                                viewAction={viewAction}
+                                getSectionIcon={getSectionIcon}
+                                getSectionColor={getSectionColor}
+                                isAddModalOpen={isAddModalOpen}
+                                setIsAddModalOpen={setIsAddModalOpen}
+                            />
+                        )}
+                    </main>
+
+                    {/* Task Detail Modal */}
+                    <TaskDetailModal
+                        isOpen={isDetailModalOpen}
+                        onClose={() => setIsDetailModalOpen(false)}
+                        action={selectedAction}
+                        onUpdate={updateTaskDetails}
+                    />
+                </div>
+            );
+        };
+
+        // ---- Main App ----
+        const App = () => {
+            const [user, setUser] = useState(null);
+
+            useEffect(() => {
+                const savedUser = localStorage.getItem('actionflow_user');
+                if (savedUser) {
+                    setUser(JSON.parse(savedUser));
+                }
+            }, []);
+
+            const handleLogin = (userData) => {
+                localStorage.setItem('actionflow_user', JSON.stringify(userData));
+                setUser(userData);
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('actionflow_user');
+                setUser(null);
+            };
+
+            return user ? (
+                <Dashboard user={user} onLogout={handleLogout} />
+            ) : (
+                <Login onLogin={handleLogin} />
+            );
+        };
+
+        // Render
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
